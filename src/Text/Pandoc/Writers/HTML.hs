@@ -29,7 +29,13 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 Conversion of 'Pandoc' documents to HTML.
 -}
-module Text.Pandoc.Writers.HTML ( writeHtml , writeHtmlString ) where
+module Text.Pandoc.Writers.HTML ( writeHtml ,
+                                  writeHtmlString,
+                                  defaultWriterState,
+                                  WriterState,
+                                  inlineListToHtml,
+                                  unordList)
+where
 import Text.Pandoc.Definition
 import Text.Pandoc.Shared
 import Text.Pandoc.Writers.Shared
@@ -422,7 +428,7 @@ treatAsImage fp =
   in  null ext || ext `elem` imageExts
 
 -- | Convert Pandoc block element to HTML.
-blockToHtml :: WriterOptions -> Block -> State WriterState Html
+blockToHtml :: (Functor m, Monad m) => WriterOptions -> Block -> StateT WriterState m Html
 blockToHtml _ Null = return mempty
 blockToHtml opts (Plain lst) = inlineListToHtml opts lst
 -- title beginning with fig: indicates that the image is a figure
@@ -579,11 +585,12 @@ blockToHtml opts (Table capt aligns widths headers rows') = do
   return $ H.table $ nl opts >> captionDoc >> coltags >> head' >>
                    body' >> nl opts
 
-tableRowToHtml :: WriterOptions
+tableRowToHtml :: (Functor m, Monad m)
+               => WriterOptions
                -> [Alignment]
                -> Int
                -> [[Block]]
-               -> State WriterState Html
+               -> StateT WriterState m Html
 tableRowToHtml opts aligns rownum cols' = do
   let mkcell = if rownum == 0 then H.th else H.td
   let rowclass = case rownum of
@@ -603,11 +610,12 @@ alignmentToString alignment = case alignment of
                                  AlignCenter  -> "center"
                                  AlignDefault -> "left"
 
-tableItemToHtml :: WriterOptions
+tableItemToHtml :: (Functor m, Monad m)
+                => WriterOptions
                 -> (Html -> Html)
                 -> Alignment
                 -> [Block]
-                -> State WriterState Html
+                -> StateT WriterState m Html
 tableItemToHtml opts tag' align' item = do
   contents <- blockListToHtml opts item
   let alignStr = alignmentToString align'
@@ -622,12 +630,12 @@ toListItems opts items = map (toListItem opts) items ++ [nl opts]
 toListItem :: WriterOptions -> Html -> Html
 toListItem opts item = nl opts >> H.li item
 
-blockListToHtml :: WriterOptions -> [Block] -> State WriterState Html
+blockListToHtml :: (Functor m, Monad m) => WriterOptions -> [Block] -> StateT WriterState m Html
 blockListToHtml opts lst =
   fmap (mconcat . intersperse (nl opts)) $ mapM (blockToHtml opts) lst
 
 -- | Convert list of Pandoc inline elements to HTML.
-inlineListToHtml :: WriterOptions -> [Inline] -> State WriterState Html
+inlineListToHtml :: (Functor m, Monad m) => WriterOptions -> [Inline] -> StateT WriterState m Html
 inlineListToHtml opts lst =
   mapM (inlineToHtml opts) lst >>= return . mconcat
 
@@ -642,9 +650,8 @@ annotateMML e tex = math (unode "semantics" [cs, unode "annotation" (annotAttrs,
     math = add_attr (XML.Attr (unqual "xmlns") "http://www.w3.org/1998/Math/MathML") . unode "math"
     annotAttrs = [XML.Attr (unqual "encoding") "application/x-tex"]
 
-
 -- | Convert Pandoc inline element to HTML.
-inlineToHtml :: WriterOptions -> Inline -> State WriterState Html
+inlineToHtml :: (Functor m, Monad m) => WriterOptions -> Inline -> StateT WriterState m Html
 inlineToHtml opts inline =
   case inline of
     (Str str)        -> return $ strToHtml str
@@ -825,7 +832,7 @@ inlineToHtml opts inline =
                                     then result ! customAttribute "data-cites" (toValue citationIds)
                                     else result
 
-blockListToNote :: WriterOptions -> String -> [Block] -> State WriterState Html
+blockListToNote :: (Functor m, Monad m) => WriterOptions -> String -> [Block] -> StateT WriterState m Html
 blockListToNote opts ref blocks =
   -- If last block is Para or Plain, include the backlink at the end of
   -- that block. Otherwise, insert a new Plain block with the backlink.
